@@ -391,6 +391,52 @@ def make_wan_interface_sensors() -> tuple[UnifiSensorEntityDescription, ...]:
             )
         )
 
+        # WAN RX Rate
+        sensors.append(
+            UnifiSensorEntityDescription[Devices, Device](
+                key=f"{wan_name} RX rate",
+                device_class=SensorDeviceClass.DATA_RATE,
+                entity_category=EntityCategory.DIAGNOSTIC,
+                native_unit_of_measurement=UnitOfDataRate.BYTES_PER_SECOND,
+                suggested_unit_of_measurement=UnitOfDataRate.MEGABITS_PER_SECOND,
+                state_class=SensorStateClass.MEASUREMENT,
+                entity_registry_enabled_default=False,
+                api_handler_fn=lambda api: api.devices,
+                available_fn=async_device_available_fn,
+                device_info_fn=async_device_device_info_fn,
+                name_fn=lambda device, _wn=wan_name: f"{_wn} RX Rate",
+                object_fn=lambda api, obj_id: api.devices[obj_id],
+                supported_fn=partial(async_device_wan_supported_fn, wan_key),
+                unique_id_fn=lambda hub, obj_id, _ws=wan_slug: (
+                    f"wan_rx_rate-{_ws}-{obj_id}"
+                ),
+                value_fn=partial(async_device_wan_value_fn, wan_key, "rx_bytes-r"),
+            )
+        )
+
+        # WAN TX Rate
+        sensors.append(
+            UnifiSensorEntityDescription[Devices, Device](
+                key=f"{wan_name} TX rate",
+                device_class=SensorDeviceClass.DATA_RATE,
+                entity_category=EntityCategory.DIAGNOSTIC,
+                native_unit_of_measurement=UnitOfDataRate.BYTES_PER_SECOND,
+                suggested_unit_of_measurement=UnitOfDataRate.MEGABITS_PER_SECOND,
+                state_class=SensorStateClass.MEASUREMENT,
+                entity_registry_enabled_default=False,
+                api_handler_fn=lambda api: api.devices,
+                available_fn=async_device_available_fn,
+                device_info_fn=async_device_device_info_fn,
+                name_fn=lambda device, _wn=wan_name: f"{_wn} TX Rate",
+                object_fn=lambda api, obj_id: api.devices[obj_id],
+                supported_fn=partial(async_device_wan_supported_fn, wan_key),
+                unique_id_fn=lambda hub, obj_id, _ws=wan_slug: (
+                    f"wan_tx_rate-{_ws}-{obj_id}"
+                ),
+                value_fn=partial(async_device_wan_value_fn, wan_key, "tx_bytes-r"),
+            )
+        )
+
     return tuple(sensors)
 
 
