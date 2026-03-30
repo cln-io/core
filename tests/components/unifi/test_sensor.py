@@ -2160,3 +2160,36 @@ async def test_active_wan_sensor(
     await hass.async_block_till_done()
 
     assert hass.states.get(entity_id).state == "WAN2"
+
+
+@pytest.mark.parametrize("device_payload", [[GATEWAY_WAN_DEVICE]])
+@pytest.mark.usefixtures("config_entry_setup")
+async def test_speedtest_sensors(
+    hass: HomeAssistant,
+    entity_registry: er.EntityRegistry,
+    mock_websocket_message: WebsocketMessageMock,
+    device_payload: list[dict[str, Any]],
+) -> None:
+    """Verify that speedtest sensors work."""
+    wan_entities = [
+        "sensor.gateway_speedtest_download",
+        "sensor.gateway_speedtest_upload",
+        "sensor.gateway_speedtest_latency",
+    ]
+    for entity_id in wan_entities:
+        ent_reg_entry = entity_registry.async_get(entity_id)
+        assert ent_reg_entry is not None, f"{entity_id} not found in registry"
+        assert ent_reg_entry.disabled_by == RegistryEntryDisabler.INTEGRATION
+        entity_registry.async_update_entity(entity_id=entity_id, disabled_by=None)
+
+    await hass.async_block_till_done()
+
+    async_fire_time_changed(
+        hass,
+        dt_util.utcnow() + timedelta(seconds=RELOAD_AFTER_UPDATE_DELAY + 1),
+    )
+    await hass.async_block_till_done()
+
+    assert hass.states.get("sensor.gateway_speedtest_download").state == "95.5"
+    assert hass.states.get("sensor.gateway_speedtest_upload").state == "42.3"
+    assert hass.states.get("sensor.gateway_speedtest_latency").state == "12"

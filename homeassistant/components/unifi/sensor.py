@@ -479,6 +479,78 @@ def make_active_wan_sensor() -> tuple[UnifiSensorEntityDescription, ...]:
 
 
 @callback
+def async_device_speedtest_supported_fn(hub: UnifiHub, obj_id: str) -> bool:
+    """Determine if device has WAN interfaces (capable of speedtest)."""
+    return any(f"wan{i}" in hub.api.devices[obj_id].raw for i in range(1, 7))
+
+
+@callback
+def async_device_speedtest_value_fn(
+    field: str,
+    hub: UnifiHub,
+    device: Device,
+) -> float | int | None:
+    """Retrieve a speedtest field value."""
+    if speedtest := device.speedtest_status:
+        return speedtest.get(field)
+    return None
+
+
+def make_speedtest_sensors() -> tuple[UnifiSensorEntityDescription, ...]:
+    """Create speedtest download, upload, and latency sensors."""
+    return (
+        UnifiSensorEntityDescription[Devices, Device](
+            key="Speedtest download",
+            device_class=SensorDeviceClass.DATA_RATE,
+            entity_category=EntityCategory.DIAGNOSTIC,
+            native_unit_of_measurement=UnitOfDataRate.MEGABITS_PER_SECOND,
+            state_class=SensorStateClass.MEASUREMENT,
+            entity_registry_enabled_default=False,
+            api_handler_fn=lambda api: api.devices,
+            available_fn=async_device_available_fn,
+            device_info_fn=async_device_device_info_fn,
+            name_fn=lambda device: "Speedtest Download",
+            object_fn=lambda api, obj_id: api.devices[obj_id],
+            supported_fn=async_device_speedtest_supported_fn,
+            unique_id_fn=lambda hub, obj_id: f"speedtest_download-{obj_id}",
+            value_fn=partial(async_device_speedtest_value_fn, "xput_download"),
+        ),
+        UnifiSensorEntityDescription[Devices, Device](
+            key="Speedtest upload",
+            device_class=SensorDeviceClass.DATA_RATE,
+            entity_category=EntityCategory.DIAGNOSTIC,
+            native_unit_of_measurement=UnitOfDataRate.MEGABITS_PER_SECOND,
+            state_class=SensorStateClass.MEASUREMENT,
+            entity_registry_enabled_default=False,
+            api_handler_fn=lambda api: api.devices,
+            available_fn=async_device_available_fn,
+            device_info_fn=async_device_device_info_fn,
+            name_fn=lambda device: "Speedtest Upload",
+            object_fn=lambda api, obj_id: api.devices[obj_id],
+            supported_fn=async_device_speedtest_supported_fn,
+            unique_id_fn=lambda hub, obj_id: f"speedtest_upload-{obj_id}",
+            value_fn=partial(async_device_speedtest_value_fn, "xput_upload"),
+        ),
+        UnifiSensorEntityDescription[Devices, Device](
+            key="Speedtest latency",
+            device_class=SensorDeviceClass.DURATION,
+            entity_category=EntityCategory.DIAGNOSTIC,
+            native_unit_of_measurement=UnitOfTime.MILLISECONDS,
+            state_class=SensorStateClass.MEASUREMENT,
+            entity_registry_enabled_default=False,
+            api_handler_fn=lambda api: api.devices,
+            available_fn=async_device_available_fn,
+            device_info_fn=async_device_device_info_fn,
+            name_fn=lambda device: "Speedtest Latency",
+            object_fn=lambda api, obj_id: api.devices[obj_id],
+            supported_fn=async_device_speedtest_supported_fn,
+            unique_id_fn=lambda hub, obj_id: f"speedtest_latency-{obj_id}",
+            value_fn=partial(async_device_speedtest_value_fn, "latency"),
+        ),
+    )
+
+
+@callback
 def async_device_temperatures_value_fn(
     temperature_name: str, hub: UnifiHub, device: Device
 ) -> float | None:
@@ -880,6 +952,7 @@ ENTITY_DESCRIPTIONS += (
     + make_device_temperatur_sensors()
     + make_wan_interface_sensors()
     + make_active_wan_sensor()
+    + make_speedtest_sensors()
 )
 
 
