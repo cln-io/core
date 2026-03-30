@@ -2126,3 +2126,37 @@ async def test_wan_rate_sensors(
     assert float(hass.states.get("sensor.gateway_wan_tx_rate").state) == pytest.approx(
         2836 * 8 / 1e6, rel=1e-3
     )
+
+
+@pytest.mark.parametrize("device_payload", [[GATEWAY_WAN_DEVICE]])
+@pytest.mark.usefixtures("config_entry_setup")
+async def test_active_wan_sensor(
+    hass: HomeAssistant,
+    entity_registry: er.EntityRegistry,
+    mock_websocket_message: WebsocketMessageMock,
+    device_payload: list[dict[str, Any]],
+) -> None:
+    """Verify that the Active WAN sensor works and updates on failover."""
+    entity_id = "sensor.gateway_active_wan"
+    ent_reg_entry = entity_registry.async_get(entity_id)
+    assert ent_reg_entry is not None
+    assert ent_reg_entry.disabled_by == RegistryEntryDisabler.INTEGRATION
+    entity_registry.async_update_entity(entity_id=entity_id, disabled_by=None)
+
+    await hass.async_block_till_done()
+
+    async_fire_time_changed(
+        hass,
+        dt_util.utcnow() + timedelta(seconds=RELOAD_AFTER_UPDATE_DELAY + 1),
+    )
+    await hass.async_block_till_done()
+
+    assert hass.states.get(entity_id).state == "WAN"
+
+    # Simulate failover to WAN2
+    device = deepcopy(GATEWAY_WAN_DEVICE)
+    device["last_wan_ip"] = "10.0.0.2"
+    mock_websocket_message(message=MessageKey.DEVICE, data=device)
+    await hass.async_block_till_done()
+
+    assert hass.states.get(entity_id).state == "WAN2"

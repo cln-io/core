@@ -441,6 +441,44 @@ def make_wan_interface_sensors() -> tuple[UnifiSensorEntityDescription, ...]:
 
 
 @callback
+def async_device_active_wan_supported_fn(hub: UnifiHub, obj_id: str) -> bool:
+    """Determine if device has WAN interfaces."""
+    return any(f"wan{i}" in hub.api.devices[obj_id].raw for i in range(1, 7))
+
+
+@callback
+def async_device_active_wan_value_fn(hub: UnifiHub, device: Device) -> str | None:
+    """Determine which WAN is active by matching last_wan_ip to interface IPs."""
+    last_wan_ip = device.last_wan_ip
+    if not last_wan_ip:
+        return None
+    for i in range(1, 7):
+        wan_data = cast(dict[str, Any], device.raw).get(f"wan{i}")
+        if isinstance(wan_data, dict) and wan_data.get("ip") == last_wan_ip:
+            return "WAN" if i == 1 else f"WAN{i}"
+    return None
+
+
+def make_active_wan_sensor() -> tuple[UnifiSensorEntityDescription, ...]:
+    """Create Active WAN sensor."""
+    return (
+        UnifiSensorEntityDescription[Devices, Device](
+            key="Active WAN",
+            entity_category=EntityCategory.DIAGNOSTIC,
+            entity_registry_enabled_default=False,
+            api_handler_fn=lambda api: api.devices,
+            available_fn=async_device_available_fn,
+            device_info_fn=async_device_device_info_fn,
+            name_fn=lambda device: "Active WAN",
+            object_fn=lambda api, obj_id: api.devices[obj_id],
+            supported_fn=async_device_active_wan_supported_fn,
+            unique_id_fn=lambda hub, obj_id: f"active_wan-{obj_id}",
+            value_fn=async_device_active_wan_value_fn,
+        ),
+    )
+
+
+@callback
 def async_device_temperatures_value_fn(
     temperature_name: str, hub: UnifiHub, device: Device
 ) -> float | None:
@@ -841,6 +879,7 @@ ENTITY_DESCRIPTIONS += (
     make_wan_latency_sensors()
     + make_device_temperatur_sensors()
     + make_wan_interface_sensors()
+    + make_active_wan_sensor()
 )
 
 
