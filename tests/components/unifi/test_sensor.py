@@ -338,6 +338,71 @@ PDU_OUTLETS_UPDATE_DATA = [
     },
 ]
 
+GATEWAY_WAN_DEVICE = {
+    "board_rev": 3,
+    "device_id": "mock-id",
+    "ip": "10.0.1.1",
+    "last_seen": 1562600145,
+    "mac": "00:00:00:00:01:01",
+    "model": "UGW3",
+    "name": "Gateway",
+    "state": 1,
+    "type": "ugw",
+    "version": "4.4.44",
+    "wan1": {
+        "bytes-r": 242330,
+        "enable": True,
+        "full_duplex": True,
+        "gateway": "2.3.4.5",
+        "ifname": "eth0",
+        "ip": "1.2.3.4",
+        "mac": "00:00:00:00:01:01",
+        "name": "wan",
+        "netmask": "255.255.254.0",
+        "rx_bytes-r": 239494,
+        "speed": 1000,
+        "tx_bytes-r": 2836,
+        "type": "wire",
+        "up": True,
+        "latency": 5,
+        "availability": 100.0,
+    },
+    "wan2": {
+        "bytes-r": 1024,
+        "enable": True,
+        "full_duplex": True,
+        "gateway": "10.0.0.1",
+        "ifname": "eth1",
+        "ip": "10.0.0.2",
+        "mac": "00:00:00:00:01:02",
+        "name": "wan2",
+        "netmask": "255.255.255.0",
+        "rx_bytes-r": 512,
+        "speed": 1000,
+        "tx_bytes-r": 512,
+        "type": "wire",
+        "up": True,
+        "latency": 11,
+        "availability": 99.5,
+    },
+    "last_wan_status": {
+        "WAN": "online",
+        "WAN2": "online",
+    },
+    "last_wan_ip": "1.2.3.4",
+    "speedtest-status": {
+        "latency": 12,
+        "rundate": 1600000000,
+        "runtime": 0,
+        "status_download": 1,
+        "status_ping": 1,
+        "status_summary": 1,
+        "status_upload": 1,
+        "xput_download": 95.5,
+        "xput_upload": 42.3,
+    },
+}
+
 
 @pytest.mark.parametrize(
     "config_entry_options",
@@ -1982,3 +2047,46 @@ async def test_device_uplink(
     device["uplink"]["uplink_mac"] = "00:00:00:00:00:03"
     mock_websocket_message(message=MessageKey.DEVICE, data=device)
     assert hass.states.get("sensor.device_uplink_mac").state == "00:00:00:00:00:03"
+
+
+@pytest.mark.parametrize("device_payload", [[GATEWAY_WAN_DEVICE]])
+@pytest.mark.usefixtures("config_entry_setup")
+async def test_wan_interface_sensors(
+    hass: HomeAssistant,
+    entity_registry: er.EntityRegistry,
+    mock_websocket_message: WebsocketMessageMock,
+    device_payload: list[dict[str, Any]],
+) -> None:
+    """Verify that WAN IP, availability, and latency sensors work."""
+    wan_entities = [
+        "sensor.gateway_wan_ip_address",
+        "sensor.gateway_wan_availability",
+        "sensor.gateway_wan_latency",
+        "sensor.gateway_wan2_ip_address",
+    ]
+    for entity_id in wan_entities:
+        ent_reg_entry = entity_registry.async_get(entity_id)
+        assert ent_reg_entry is not None, f"{entity_id} not found in registry"
+        assert ent_reg_entry.disabled_by == RegistryEntryDisabler.INTEGRATION
+        entity_registry.async_update_entity(entity_id=entity_id, disabled_by=None)
+
+    await hass.async_block_till_done()
+
+    async_fire_time_changed(
+        hass,
+        dt_util.utcnow() + timedelta(seconds=RELOAD_AFTER_UPDATE_DELAY + 1),
+    )
+    await hass.async_block_till_done()
+
+    # WAN IP
+    assert hass.states.get("sensor.gateway_wan_ip_address").state == "1.2.3.4"
+    assert hass.states.get("sensor.gateway_wan2_ip_address").state == "10.0.0.2"
+
+    # WAN Availability
+    assert hass.states.get("sensor.gateway_wan_availability").state == "100.0"
+
+    # WAN Latency
+    assert hass.states.get("sensor.gateway_wan_latency").state == "5"
+
+    # WAN3 sensors should not exist
+    assert entity_registry.async_get("sensor.gateway_wan3_ip_address") is None

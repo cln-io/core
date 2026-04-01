@@ -11,7 +11,7 @@ from dataclasses import dataclass
 from datetime import date, datetime, timedelta
 from decimal import Decimal
 from functools import partial
-from typing import TYPE_CHECKING, Literal
+from typing import TYPE_CHECKING, Any, Literal, cast
 
 from aiounifi.interfaces.api_handlers import APIHandler, ItemEvent
 from aiounifi.interfaces.clients import Clients
@@ -295,6 +295,103 @@ def make_wan_latency_sensors() -> tuple[UnifiSensorEntityDescription, ...]:
             ("Cloudflare", "1.1.1.1"),
         )
     )
+
+
+@callback
+def async_device_wan_supported_fn(
+    wan_key: str,
+    hub: UnifiHub,
+    obj_id: str,
+) -> bool:
+    """Determine if device has WAN interface data."""
+    device = hub.api.devices[obj_id]
+    return wan_key in device.raw
+
+
+@callback
+def async_device_wan_value_fn(
+    wan_key: str,
+    field: str,
+    hub: UnifiHub,
+    device: Device,
+) -> float | str | None:
+    """Retrieve a WAN interface field value."""
+    wan_data = cast(dict[str, Any], device.raw).get(wan_key)
+    if isinstance(wan_data, dict):
+        return wan_data.get(field)
+    return None
+
+
+def make_wan_interface_sensors() -> tuple[UnifiSensorEntityDescription, ...]:
+    """Create WAN IP address, availability, and latency sensors."""
+    sensors: list[UnifiSensorEntityDescription] = []
+
+    wans = tuple((f"WAN{i}" if i > 1 else "WAN", f"wan{i}") for i in range(1, 7))
+
+    for wan_name, wan_key in wans:
+        wan_slug = wan_name.lower()
+
+        # WAN IP Address
+        sensors.append(
+            UnifiSensorEntityDescription[Devices, Device](
+                key=f"{wan_name} IP address",
+                entity_category=EntityCategory.DIAGNOSTIC,
+                entity_registry_enabled_default=False,
+                api_handler_fn=lambda api: api.devices,
+                available_fn=async_device_available_fn,
+                device_info_fn=async_device_device_info_fn,
+                name_fn=lambda device, _wn=wan_name: f"{_wn} IP Address",
+                object_fn=lambda api, obj_id: api.devices[obj_id],
+                supported_fn=partial(async_device_wan_supported_fn, wan_key),
+                unique_id_fn=lambda hub, obj_id, _ws=wan_slug: f"wan_ip-{_ws}-{obj_id}",
+                value_fn=partial(async_device_wan_value_fn, wan_key, "ip"),
+            )
+        )
+
+        # WAN Availability
+        sensors.append(
+            UnifiSensorEntityDescription[Devices, Device](
+                key=f"{wan_name} availability",
+                entity_category=EntityCategory.DIAGNOSTIC,
+                native_unit_of_measurement=PERCENTAGE,
+                state_class=SensorStateClass.MEASUREMENT,
+                entity_registry_enabled_default=False,
+                api_handler_fn=lambda api: api.devices,
+                available_fn=async_device_available_fn,
+                device_info_fn=async_device_device_info_fn,
+                name_fn=lambda device, _wn=wan_name: f"{_wn} Availability",
+                object_fn=lambda api, obj_id: api.devices[obj_id],
+                supported_fn=partial(async_device_wan_supported_fn, wan_key),
+                unique_id_fn=lambda hub, obj_id, _ws=wan_slug: (
+                    f"wan_availability-{_ws}-{obj_id}"
+                ),
+                value_fn=partial(async_device_wan_value_fn, wan_key, "availability"),
+            )
+        )
+
+        # WAN Latency
+        sensors.append(
+            UnifiSensorEntityDescription[Devices, Device](
+                key=f"{wan_name} latency",
+                device_class=SensorDeviceClass.DURATION,
+                entity_category=EntityCategory.DIAGNOSTIC,
+                native_unit_of_measurement=UnitOfTime.MILLISECONDS,
+                state_class=SensorStateClass.MEASUREMENT,
+                entity_registry_enabled_default=False,
+                api_handler_fn=lambda api: api.devices,
+                available_fn=async_device_available_fn,
+                device_info_fn=async_device_device_info_fn,
+                name_fn=lambda device, _wn=wan_name: f"{_wn} Latency",
+                object_fn=lambda api, obj_id: api.devices[obj_id],
+                supported_fn=partial(async_device_wan_supported_fn, wan_key),
+                unique_id_fn=lambda hub, obj_id, _ws=wan_slug: (
+                    f"wan_latency-{_ws}-{obj_id}"
+                ),
+                value_fn=partial(async_device_wan_value_fn, wan_key, "latency"),
+            )
+        )
+
+    return tuple(sensors)
 
 
 @callback
@@ -694,7 +791,11 @@ ENTITY_DESCRIPTIONS: tuple[UnifiSensorEntityDescription, ...] = (
     ),
 )
 
-ENTITY_DESCRIPTIONS += make_wan_latency_sensors() + make_device_temperatur_sensors()
+ENTITY_DESCRIPTIONS += (
+    make_wan_latency_sensors()
+    + make_device_temperatur_sensors()
+    + make_wan_interface_sensors()
+)
 
 
 async def async_setup_entry(
